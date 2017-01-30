@@ -21,6 +21,6 @@
   + Tournament2
 
 % Archivist
-  * Default
-  + LODwAP
+  + Default
+  * LODwAP
   + SSwD

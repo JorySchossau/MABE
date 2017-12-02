@@ -2,11 +2,11 @@
 //     for general research information:
 //         hintzelab.msu.edu
 //     for MABE documentation:
-//         github.com/ahnt/MABE/wiki
+//         github.com/Hintzelab/MABE/wiki
 //
 //  Copyright (c) 2015 Michigan State University. All rights reserved.
 //     to view the full license, visit:
-//         github.com/ahnt/MABE/wiki/License
+//         github.com/Hintzelab/MABE/wiki/License
 
 #include "../../Utilities/Utilities.h"
 #include "NumeralClassifierWorld.h"
@@ -16,12 +16,18 @@ shared_ptr<ParameterLink<int>> NumeralClassifierWorld::defaultWorldUpdatesPL = P
 shared_ptr<ParameterLink<int>> NumeralClassifierWorld::defaultRetinaTypePL = Parameters::register_parameter("WORLD_NUMERALCLASSIFIER-retinaType", 3, "1 = center only, 2 = 3 across, 3 = 3x3, 4 = 5x5, 5 = 7x7");
 shared_ptr<ParameterLink<string>> NumeralClassifierWorld::numeralDataFileNamePL = Parameters::register_parameter("WORLD_NUMERALCLASSIFIER-dataFileName", (string) "World/NumeralClassifierWorld/mnist.train.discrete.28x28-only100", "name of file with numeral data");
 
+shared_ptr<ParameterLink<string>> NumeralClassifierWorld::groupNamePL = Parameters::register_parameter("WORLD_NUMERALCLASSIFIER_NAMES-groupNameSpace", (string)"root::", "namespace of group to be evaluated");
+shared_ptr<ParameterLink<string>> NumeralClassifierWorld::brainNamePL = Parameters::register_parameter("WORLD_NUMERALCLASSIFIER_NAMES-brainNameSpace", (string)"root::", "namespace for parameters used to define brain");
+
 NumeralClassifierWorld::NumeralClassifierWorld(shared_ptr<ParametersTable> _PT) :
 		AbstractWorld(_PT) {
-	worldUpdates = (PT == nullptr) ? defaultWorldUpdatesPL->lookup() : PT->lookupInt("WORLD_NUMERALCLASSIFIER-WorldUpdates");
-	testsPreWorldEval = (PT == nullptr) ? defaulttestsPreWorldEvalPL->lookup() : PT->lookupInt("WORLD_NUMERALCLASSIFIER-testsPreWorldEval");
-	retinaType = (PT == nullptr) ? defaultRetinaTypePL->lookup() : PT->lookupInt("WORLD_NUMERALCLASSIFIER-retinaType");  //1 = center only, 2 = 3 across, 3 = 3x3, 4 = 5x5, 5 = 7x7
-	numeralDataFileName = (PT == nullptr) ? numeralDataFileNamePL->lookup() : PT->lookupString("WORLD_NUMERALCLASSIFIER-dataFileName");
+	worldUpdates = defaultWorldUpdatesPL->get(PT);
+	testsPreWorldEval = defaulttestsPreWorldEvalPL->get(PT);
+	retinaType = defaultRetinaTypePL->get(PT);  //1 = center only, 2 = 3 across, 3 = 3x3, 4 = 5x5, 5 = 7x7
+	numeralDataFileName = numeralDataFileNamePL->get(PT);
+
+	string groupName = groupNamePL->get(PT);
+	brainName = brainNamePL->get(PT);
 
 	outputNodesCount = 13;  // moveX(1), moveY(1), 0->9(10), done(1)
 	switch (retinaType) {
@@ -105,21 +111,24 @@ NumeralClassifierWorld::NumeralClassifierWorld(shared_ptr<ParametersTable> _PT) 
 	}
 
 //	// columns to be added to ave file
-	aveFileColumns.clear();
-	aveFileColumns.push_back("score");
+	popFileColumns.clear();
+	popFileColumns.push_back("score");
 
 	for (int i = 0; i < 10; i++) {
-		aveFileColumns.push_back(to_string(i) + "_correct");
-		aveFileColumns.push_back(to_string(i) + "_incorrect");
+		popFileColumns.push_back(to_string(i) + "-correct");
+		popFileColumns.push_back(to_string(i) + "-incorrect");
 	}
-	aveFileColumns.push_back("totalCorrect");
-	aveFileColumns.push_back("totalIncorrect");
+	popFileColumns.push_back("totalCorrect");
+	popFileColumns.push_back("totalIncorrect");
 }
 
 
 void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse, int visualize, int debug){
 //void NumeralClassifierWorld::runWorldSolo(shared_ptr<Organism> org, bool analyse, bool visualize, bool debug) {
 	// numeralClassifierWorld assumes there will only ever be one agent being tested at a time. It uses org by default.
+	
+	auto brain = org->brains[brainName];
+
 	double score = 0.0;
 	int currentX, currentY;  // = { Random::getIndex(28), Random::getIndex(28) };  // place organism somewhere in the world
 
@@ -138,7 +147,7 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 
 	int nodesAssignmentCounter;  // this world can has number of brainState inputs set by parameter. This counter is used while assigning inputs
 	// make sure the brain does not have values from last run
-	org->brain->resetBrain();
+	brain->resetBrain();
 	for (int test = 0; test < testsPreWorldEval; test++) {  //run agent for "worldUpdates" brain updates
 		bool goodNumber = false;
 		while (!goodNumber) {
@@ -163,9 +172,9 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 				int checkX = currentX + retinalOffsets[i].first;
 				int checkY = currentY + retinalOffsets[i].second;
 				if (checkX >= 0 && checkX < 28 && checkY >= 0 && checkY < 28) {  // if we are on the image
-					org->brain->setInput(nodesAssignmentCounter++, numeralData[numeralPick][(whichNumeral * 28 * 28) + (checkY * 28) + (checkX)]);
+					brain->setInput(nodesAssignmentCounter++, numeralData[numeralPick][(whichNumeral * 28 * 28) + (checkY * 28) + (checkX)]);
 				} else {  //if we are not on the number, assign 0
-					org->brain->setInput(nodesAssignmentCounter++, 0);
+					brain->setInput(nodesAssignmentCounter++, 0);
 				}
 			}
 			//set edge nodes
@@ -173,8 +182,8 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 			int rayX;
 			int rayY;
 			if (currentX < 0 || currentX >= 28) {  // we are off the grid in x
-				org->brain->setInput(nodesAssignmentCounter++, -1);  // up sensor
-				org->brain->setInput(nodesAssignmentCounter++, -1);  // down sensor
+				brain->setInput(nodesAssignmentCounter++, -1);  // up sensor
+				brain->setInput(nodesAssignmentCounter++, -1);  // down sensor
 			} else {  // cast up and down rays
 				// up first
 				int foundBlackUp = -1;
@@ -204,15 +213,15 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 					rayY++;
 					distance++;
 				}
-				org->brain->setInput(nodesAssignmentCounter++, foundBlackUp);  // up sensor
-				org->brain->setInput(nodesAssignmentCounter++, foundBlackDown);  // down sensor
+				brain->setInput(nodesAssignmentCounter++, foundBlackUp);  // up sensor
+				brain->setInput(nodesAssignmentCounter++, foundBlackDown);  // down sensor
 
 			}
 
 			//left and right
 			if (currentY < 0 || currentY >= 28) {  // we are off the grid in y
-				org->brain->setInput(nodesAssignmentCounter++, -1);  // left sensor
-				org->brain->setInput(nodesAssignmentCounter++, -1);  // right sensor
+				brain->setInput(nodesAssignmentCounter++, -1);  // left sensor
+				brain->setInput(nodesAssignmentCounter++, -1);  // right sensor
 			} else {  // cast rays
 				// left first
 				rayX = currentX;
@@ -239,12 +248,12 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 					rayX++;
 					distance++;
 				}
-				org->brain->setInput(nodesAssignmentCounter++, foundBlackLeft);  // left sensor
-				org->brain->setInput(nodesAssignmentCounter++, foundBlackRight);  // right sensor
+				brain->setInput(nodesAssignmentCounter++, foundBlackLeft);  // left sensor
+				brain->setInput(nodesAssignmentCounter++, foundBlackRight);  // right sensor
 			}
 
 //		if (clearOutputs) {
-//			org->brain->resetOutputs();
+//			brain->resetOutputs();
 //		}
 
 			if (debug) {
@@ -253,26 +262,26 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 				cout << "currentLocation: " << currentX << "," << currentY << "\n";
 				cout << "inNodes: ";
 				for (int i = 0; i < inputNodesCount; i++) {
-					cout << org->brain->readInput(i) << " ";
+					cout << brain->readInput(i) << " ";
 				}
 				cout << "\nlast outNodes: ";
 				for (int i = 0; i < outputNodesCount; i++) {
-					cout << org->brain->readOutput(i) << " ";
+					cout << brain->readOutput(i) << " ";
 				}
 				cout << "\n\n  -- brain update --\n\n";
 			}
 
-			org->brain->update();  // just run the update!
+			brain->update();  // just run the update!
 
 			// move organism
 
-			currentX += Trit(org->brain->readOutput(0)) * stepSize;  // left and right
-			currentY += Trit(org->brain->readOutput(1)) * stepSize;  // up and down
+			currentX += Trit(brain->readOutput(0)) * stepSize;  // left and right
+			currentY += Trit(brain->readOutput(1)) * stepSize;  // up and down
 
 			if (debug) {
 				cout << "outNodes: ";
 				for (int i = 0; i < outputNodesCount; i++) {
-					cout << org->brain->readOutput(i) << " ";
+					cout << brain->readOutput(i) << " ";
 				}
 				cout << "\n  -- world update --\n\n";
 				/////////////////////////////////////////////
@@ -313,10 +322,10 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 			}  // end of show loop
 		}  // end of test loop
 		for (int i = 0; i < 10; i++) {
-			if (numeralPick == i && org->brain->readOutput(2 + i) > 0) {
+			if (numeralPick == i && brain->readOutput(2 + i) > 0) {
 				correct[i]++;
 			}
-			if (numeralPick != i && org->brain->readOutput(2 + i) > 0) {
+			if (numeralPick != i && brain->readOutput(2 + i) > 0) {
 				incorrect[i]++;
 			}
 		}
@@ -348,19 +357,19 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 		total_correct += correct[i];
 		total_incorrect += incorrect[i];
 
-		temp_name = to_string(i) + "_correct";  // make food names i.e. food1, food2, etc.
+		temp_name = to_string(i) + "-correct";  // make food names i.e. food1, food2, etc.
 		(counts[i] > 0) ? val = (double) correct[i] / (double) counts[i] : val = 0;
-		org->dataMap.Append(temp_name, val);
+		org->dataMap.append(temp_name, val);
 		org->dataMap.setOutputBehavior(temp_name, DataMap::AVE);
 
-		temp_name = to_string(i) + "_incorrect";  // make food names i.e. food1, food2, etc.
+		temp_name = to_string(i) + "-incorrect";  // make food names i.e. food1, food2, etc.
 		(counts[i] < testsPreWorldEval) ? val = (double) incorrect[i] / ((double) testsPreWorldEval - counts[i]) : val = 0;
-		org->dataMap.Append(temp_name, val);
+		org->dataMap.append(temp_name, val);
 		org->dataMap.setOutputBehavior(temp_name, DataMap::AVE);
 	}
 
-	org->dataMap.Append("totalCorrect", total_correct);  // total food eaten (regardless of type)
-	org->dataMap.Append("totalIncorrect", total_incorrect);  // total food eaten (regardless of type)
+	org->dataMap.append("totalCorrect", total_correct);  // total food eaten (regardless of type)
+	org->dataMap.append("totalIncorrect", total_incorrect);  // total food eaten (regardless of type)
 	org->dataMap.setOutputBehavior("totalCorrect", DataMap::AVE);
 	org->dataMap.setOutputBehavior("totalCorrect", DataMap::AVE);
 
@@ -368,6 +377,6 @@ void NumeralClassifierWorld::evaluateSolo(shared_ptr<Organism> org, int analyse,
 		score = 0.0;
 	}
 	//org->score = score;
-	org->dataMap.Append("score", score);
+	org->dataMap.append("score", score);
 	//org->dataMap.setOutputBehavior("score", DataMap::AVE | DataMap::LIST);
 }

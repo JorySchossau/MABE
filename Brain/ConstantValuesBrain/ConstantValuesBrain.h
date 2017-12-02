@@ -2,14 +2,13 @@
 //     for general research information:
 //         hintzelab.msu.edu
 //     for MABE documentation:
-//         github.com/ahnt/MABE/wiki
+//         github.com/Hintzelab/MABE/wiki
 //
 //  Copyright (c) 2015 Michigan State University. All rights reserved.
 //     to view the full license, visit:
-//         github.com/ahnt/MABE/wiki/License
+//         github.com/Hintzelab/MABE/wiki/License
 
-#ifndef __BasicMarkovBrainTemplate__ConstantValuesBrain__
-#define __BasicMarkovBrainTemplate__ConstantValuesBrain__
+#pragma once
 
 #include <math.h>
 #include <memory>
@@ -36,16 +35,9 @@ public:
 
 	static shared_ptr<ParameterLink<bool>> initializeUniformPL;
 	static shared_ptr<ParameterLink<bool>> initializeConstantPL;
-	static shared_ptr<ParameterLink<int>> initializeConstantValuePL;
+	static shared_ptr<ParameterLink<double>> initializeConstantValuePL;
 
-	double valueMin;
-	double valueMax;
-	double valueType;
-	int samplesPerValue;
-
-	bool initializeUniform;
-	bool initializeConstant;
-	int initializeConstantValue;
+	static shared_ptr<ParameterLink<string>> genomeNamePL;
 
 	ConstantValuesBrain() = delete;
 
@@ -55,19 +47,27 @@ public:
 
 	virtual void update() override;
 
-	virtual shared_ptr<AbstractBrain> makeBrainFromGenome(shared_ptr<AbstractGenome> _genome) override;
+	virtual shared_ptr<AbstractBrain> makeBrain(unordered_map<string, shared_ptr<AbstractGenome>>& _genomes) override;
+
+	virtual unordered_set<string> requiredGenomes() override {
+		return { genomeNamePL->get(PT) };
+	}
 
 	virtual string description() override;
-	virtual DataMap getStats() override;
+	virtual DataMap getStats(string& prefix) override;
+	virtual string getType() override {
+		return "ConstantValues";
+	}
 
 	virtual void resetBrain() override;
 	virtual void resetOutputs() override;
 
-	virtual void initalizeGenome(shared_ptr<AbstractGenome> _genome);
+	virtual shared_ptr<AbstractBrain> makeCopy(shared_ptr<ParametersTable> _PT = nullptr) override;
+
+	virtual void initializeGenomes(unordered_map<string, shared_ptr<AbstractGenome>>& _genomes);
 };
 
 inline shared_ptr<AbstractBrain> ConstantValuesBrain_brainFactory(int ins, int outs, shared_ptr<ParametersTable> PT) {
 	return make_shared<ConstantValuesBrain>(ins, outs, PT);
 }
 
-#endif /* defined(__BasicMarkovBrainTemplate__ConstantValuesBrain__) */

@@ -27,10 +27,11 @@ before_install:
 
 install: 
   # C++14
-  - apt-get install -qq gcc-7 g++-7
-  - update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 90
+  - sudo apt-get install -qq gcc-7 g++-7
+  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 90
 
 script:
+  - cp .travis.buildOptions.txt buildOptions.txt
   - ls
   - python3 --version
   - g++ --version

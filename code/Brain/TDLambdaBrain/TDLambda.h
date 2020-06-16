@@ -64,9 +64,6 @@ namespace TD {
     tracesB.resize(statespaceSize);
     tracesN.resize(statespaceSize);
     reset();
-    //cout << str(params.dims) << endl;
-    //cout << "parameters" << endl;
-    //cout << str(params) << endl;
   }
 
   void Lambda::reset() {
@@ -95,9 +92,9 @@ namespace TD {
       // TODO set multiple features to true if featurizeState returns multiple internal features (future work) instead of a single one
       // for now, we assume only single internal features
       featuresForEachAction[action][featurizeState(fullState)] = true;
-      cout << str(weights) << endl;
-      cout << str(featuresForEachAction[action]) << endl;
-      cout << endl;
+      //cout << str(weights) << endl;
+      //cout << str(featuresForEachAction[action]) << endl;
+      //cout << endl;
       result[action] = valarray<double>(weights[featuresForEachAction[action]]).sum();
     }
     return result;
@@ -157,7 +154,7 @@ namespace TD {
     // do weight updates depending on reward value location in spans defined by boundaries [-inf,-1,0,inf] = {Bad,Neutral,Good} spans
     if      (reward >   0) weights += params.alpha * surprise * tracesG;
     else if (reward >= -1) weights += params.alpha * surprise * tracesN;
-    else                   weights += params.alpha * surprise * tracesN;
+    else                   weights += params.alpha * surprise * tracesB;
 
     // do trace updates
     tracesG *= params.lmbdaG;
@@ -184,13 +181,4 @@ namespace TD {
     action = nextAction;
   }
 
-  void testTDLambda() {
-    valarray<int> dims = {3,3,4};
-    cout << "prod: " << prod(dims) << endl;
-    Lambda brain({.dims=dims, .n_features=prod(dims), .n_actions=4, .alpha=0.1, .gamma=0.95, .epsilon=0.1, .lmbdaG=0.96, .lmbdaB=0.1, .lmbdaN=0.42});
-    cout << brain.bin[valarray<int>({2,2,3})] << endl;
-    auto qvalues = brain.predictPayoffsForAllActions({2,2});
-    // TODO: test out plasticUpdate() and staticUpdate()
-    cout << str(qvalues) << endl;
-  }
 }

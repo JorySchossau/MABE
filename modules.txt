@@ -1,7 +1,8 @@
 % World
   - Logic16
+  * ConveyorBelt
   - BlockCatch
-  * Test
+  - Test
   - Berry
 
 % Genome
@@ -10,21 +11,22 @@
 
 % Archivist
   - SSwD
-  + LODwAP
+  - LODwAP
 
 % Brain
   - Wire
-  * CGP
+  - CGP
   - Markov
   - LSTM
   - BiLog
   - ANN
   - Human
   - ConstantValues
+  * TDLambda
 
 % Optimizer
   - Islands
   - Lexicase
-  + Roulette
-  * Tournament
+  * Roulette
+  - Tournament
 

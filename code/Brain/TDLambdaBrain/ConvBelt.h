@@ -74,23 +74,22 @@ auto ConvBelt::reset() -> state_t {
 }
 
 auto ConvBelt::step(const int& action) -> step_t {
-  double reward(-1);
-  bool goalFound(false);
-
-  if (action == 1) pass();
-  else             currentPuzzle->state = currentPuzzle->transitions[currentPuzzle->state][action];
-
+  double reward;
+  if (action == 1)
+    pass();
+  else
+    currentPuzzle->state = currentPuzzle->transitions[currentPuzzle->state][action];
   if (contains(goalRewards, currentPuzzle->rewards[currentPuzzle->state])) {
+    reward = currentPuzzle->rewards[currentPuzzle->state];
     currentPuzzle->rewards[currentPuzzle->state] = -1; // remove food
     --numPuzzlesToSolve;
-    return make_tuple(currentPuzzle->features[currentPuzzle->state],
-                      currentPuzzle->rewards[currentPuzzle->state],
-                      true);
   }
   else
-    return make_tuple(currentPuzzle->features[currentPuzzle->state],
-                      currentPuzzle->rewards[currentPuzzle->state],
-                      false);
+    reward = currentPuzzle->rewards[currentPuzzle->state];
+ 
+  return make_tuple(/* new world state*/ currentPuzzle->features[currentPuzzle->state],
+                    /* reward         */ reward,
+                    /* goal reached   */ bool(numPuzzlesToSolve == 0));
 }
 
 void ConvBelt::pass() {

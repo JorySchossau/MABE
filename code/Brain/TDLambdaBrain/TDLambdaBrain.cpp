@@ -9,61 +9,75 @@
 //         github.com/Hintzelab/MABE/wiki/License
 
 #include "TDLambdaBrain.h"
+#include <Brain/TDLambdaBrain/TDUtils.h>
 
+std::shared_ptr<ParameterLink<std::string>> TDLambdaBrain::dimensionsPL = Parameters::register_parameter( "BRAIN_TDLAMBDA-dimensions", std::string("0"), "csv list of salient input dimensions, such as \"3,4\" (3 colors, 4 actions)"); // string parameter for
+std::shared_ptr<ParameterLink<bool>> TDLambdaBrain::use_confidencePL = Parameters::register_parameter( "BRAIN_TDLAMBDA-useConfidence", true, "'confidence' is decision-annealing, allowing convergence on perfect behavior, and is reset upon TD surprise");
+std::shared_ptr<ParameterLink<double>> TDLambdaBrain::no_confidence_random_actionPL = Parameters::register_parameter( "BRAIN_TDLAMBDA-pRandomAction", 0.01, "when not using 'confidence', how often to choose a random action");
+
+// ctor, constructor
 TDLambdaBrain::TDLambdaBrain(int ins, int outs, std::shared_ptr<ParametersTable> PT_)
     : AbstractBrain(ins, outs, PT_) {
+    std::vector<int> intdimensions;
+    convertCSVListToVector<int>(std::string(dimensionsPL->get()), intdimensions);
+    dimensions = std::valarray<int>( intdimensions.data(), intdimensions.size() );
+    
+    use_confidence = use_confidencePL->get();
+    no_confidence_random_action = no_confidence_random_actionPL->get();
+
     nrInputValues = ins;
     nrOutputValues = outs;
     recordActivity = false;
 
     inputValues.resize(nrInputValues);
     outputValues.resize(nrOutputValues);
+
+    int n_actions(end(dimensions)[-1]);
+
+    tdlambda = TD::Lambda ({.dims=dimensions,
+                            .n_features=TD::prod(dimensions),
+                            .n_actions=n_actions,
+                            .alpha=0.1,
+                            .gamma=0.95,
+                            .epsilon=0.1,
+                            .lmbdaG=0.96, .lmbdaB=0.94, .lmbdaN=0.42});
+    tdlambda.use_confidence = use_confidence;
+    tdlambda.no_confidence_random_action = no_confidence_random_action;
 }
 
 void TDLambdaBrain::update(){
-  using namespace std;
-  cout << "update() called" << endl;
-    // code here to update brain
-    // inputs are in inputValues[inputAddress]
-    // outputs are in outputValues[outputAddress]
-    
-    // example: a brain that outputs 1 if input 0 == input 1 else 0
-    //if (inputValues[0] == inputValues[1]) {
-    //    outputValues[0] = 1;
-    //}
-    //else {
-    //    outputValues[0] = 0;
-    //}
+  tdlambda.reward = inputValues[0]; // reward always at pos 0
+  for (int i(1); i<nrInputValues; ++i) {
+    tdlambda.sensoryState[i] = reinterpret_cast<int*>(&inputValues[i])[0];
+  }
+  tdlambda.plasticUpdate();
+  outputValues[0] = reinterpret_cast<double*>(&tdlambda.action)[0];
 }
 
 // make a copy of the brain that called this
 std::shared_ptr<AbstractBrain> TDLambdaBrain::makeCopy(std::shared_ptr<ParametersTable> PT_) {
-    
-    // You need to define this function. It needs to return a cop of the brain that called it
-    
+  std::shared_ptr<TDLambdaBrain> newBrain = std::make_shared<TDLambdaBrain>(nrInputValues, nrOutputValues, PT);
+  newBrain->tdlambda.weights = this->tdlambda.weights;
     return(std::make_shared<TDLambdaBrain>(nrInputValues, nrOutputValues, PT));
 }
 
 // Make a brain like the brain that called this function, using genomes and initalizing other elements.
 std::shared_ptr<AbstractBrain> TDLambdaBrain::makeBrain(std::unordered_map<std::string, std::shared_ptr<AbstractGenome>> & _genomes) {
     
-    // You need to define this function. It needs to return a brain, it can use the brain that called this, and _genomes
-
   std::shared_ptr<TDLambdaBrain> newBrain = std::make_shared<TDLambdaBrain>(nrInputValues, nrOutputValues, PT);
 
-  // TODO set brain values here
-  auto genomeHandler = _genomes["root::"]->newHandler(_genomes["root::"], true);
-  std::cout << "making brain from genome" << std::endl;
-  for (int i=1; i<=36; i++) {
-    std::cout << genomeHandler->readDouble(0.0,1.0) << std::endl;
-    genomeHandler->advanceIndex();
+  auto gh = _genomes["root::"]->newHandler(_genomes["root::"], true);
+  int num_sites(tdlambda.params.n_features);
+  for (int i=0; i<num_sites; i++) {
+    newBrain->tdlambda.weights[i] = gh->readDouble(-2.0,2.0);
+    gh->advanceIndex();
   }
+  std::copy( begin(newBrain->tdlambda.weights), end(newBrain->tdlambda.weights), begin(newBrain->tdlambda.originalWeights) );
   return(newBrain);
 }
 
 std::string TDLambdaBrain::description() {
-    // returns a desription of this brain in it's current state
-    return "no description provided...";
+    return "(no description)";
 }
 
 DataMap TDLambdaBrain::getStats(std::string& prefix) {
@@ -145,6 +159,7 @@ void TDLambdaBrain::resetInputs() {
 void TDLambdaBrain::resetBrain() {
     resetInputs();
     resetOutputs();
+    tdlambda.reset();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -154,17 +169,11 @@ void TDLambdaBrain::resetBrain() {
 // return a set of namespaces, MABE will insure that genomes with these names are created
 // on organisms with these brains.
 std::unordered_set<std::string> TDLambdaBrain::requiredGenomes() {
-    // note namespace must end with ::, also, if you wish to use default values, then 
-    //    return {"root::"};
-    return {};
+    return {"root::"};
 }
 
 void TDLambdaBrain::initializeGenomes(std::unordered_map<std::string, std::shared_ptr<AbstractGenome>> & _genomes) {
-    // do nothing by default... if this is a direct encoded brain, then no action is needed.
-    // This can be used to randomize the genome and/or insert start codons
-    // genomes will be found in _genomes[name] where name is the string used in required genomes
-    // example: _genomes["root::"]
-
+    _genomes["root::"]->fillRandom();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -193,24 +202,3 @@ std::shared_ptr<AbstractBrain> TDLambdaBrain::makeBrainFromMany(
     return makeBrain(_genomes);
 }
 
-// apply direct mutations to this brain
-void TDLambdaBrain::mutate() {
-    // do nothing by default...
-    // if this is a direct encoded brain, then this function needs to be filled in to allow for mutations.
-}
-
-// convert a brain into data map with data that can be saved to file so this brain can be reconstructed
-// 'name' here contains the prefix that must be so that deserialize can identify relavent data
-DataMap TDLambdaBrain::serialize(std::string & name) {
-    DataMap dataMap;
-    return dataMap;
-}
-
-// given an unordered_map<string, string> of org data and PT, load data into this brain
-// 'name' here contains the prefix that was used when data was being saved
-void TDLambdaBrain::deserialize(std::shared_ptr<ParametersTable> PT,
-    std::unordered_map<std::string, std::string> & orgData,
-    std::string & name) {
-    // note that the process by which deserialization (including text formatting) depends on
-    // the corisponding serialize process
-}

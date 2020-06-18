@@ -12,13 +12,20 @@
 
 // AbstractBrain defines all the basic function templates for brains
 #include <Brain/AbstractBrain.h>
+#include <valarray>
 
 // If your brain is (or maybe) constructed using a genome, you must include AbstractGenome.h
 #include <Genome/AbstractGenome.h>
+#include <Brain/TDLambdaBrain/TDLambdaBrain.h>
+#include <Brain/TDLambdaBrain/TDLambda.h> // raw td-lambda functionality ported from our py implementation
 
 class TDLambdaBrain : public AbstractBrain {
 
 public:
+    static std::shared_ptr<ParameterLink<std::string>> dimensionsPL;
+    static std::shared_ptr<ParameterLink<bool>> use_confidencePL;
+    static std::shared_ptr<ParameterLink<double>> no_confidence_random_actionPL;
+
     TDLambdaBrain() = delete;
 
     TDLambdaBrain(int ins, int outs, std::shared_ptr<ParametersTable> PT_);
@@ -91,19 +98,12 @@ public:
         std::unordered_map<std::string,
         std::shared_ptr<AbstractGenome>>&_genomes);
 
-    // apply direct mutations to this brain
-    virtual void mutate();
+    // CUSTOM PROPERTIES & METHODS
+    std::valarray<int> dimensions;
+    TD::Lambda tdlambda;
 
-    // convert a brain into data map with data that can be saved to file so this brain can be reconstructed
-    // 'name' here contains the prefix that must be so that deserialize can identify relavent data
-    virtual DataMap serialize(std::string& name);
-
-    // given an unordered_map<string, string> of org data and PT, load data into this brain
-    // 'name' here contains the prefix that was used when data was being saved
-    virtual void deserialize(std::shared_ptr<ParametersTable> PT,
-        std::unordered_map<std::string, std::string>& orgData,
-        std::string& name);
-
+    bool use_confidence;
+    double no_confidence_random_action;
 };
 
 inline std::shared_ptr<AbstractBrain> TDLambdaBrain_brainFactory(int ins, int outs, std::shared_ptr<ParametersTable> PT) {

@@ -10,6 +10,7 @@
 
 #include "TDLambdaBrain.h"
 #include <Brain/TDLambdaBrain/TDUtils.h>
+#include <math.h> // round, truc
 
 std::shared_ptr<ParameterLink<std::string>> TDLambdaBrain::dimensionsPL = Parameters::register_parameter( "BRAIN_TDLAMBDA-dimensions", std::string("0"), "csv list of salient input dimensions, such as \"3,4\" (3 colors, 4 actions)"); // string parameter for
 std::shared_ptr<ParameterLink<bool>> TDLambdaBrain::use_confidencePL = Parameters::register_parameter( "BRAIN_TDLAMBDA-useConfidence", true, "'confidence' is decision-annealing, allowing convergence on perfect behavior, and is reset upon TD surprise");
@@ -48,10 +49,12 @@ TDLambdaBrain::TDLambdaBrain(int ins, int outs, std::shared_ptr<ParametersTable>
 void TDLambdaBrain::update(){
   tdlambda.reward = inputValues[0]; // reward always at pos 0
   for (int i(1); i<nrInputValues; ++i) {
-    tdlambda.sensoryState[i] = reinterpret_cast<int*>(&inputValues[i])[0];
+    //tdlambda.sensoryState[i-1] = reinterpret_cast<int*>(&inputValues[i])[0]; // old cast version
+    tdlambda.sensoryState[i-1] = int(std::trunc(std::round(inputValues[i]))); // non-cast version
   }
   tdlambda.plasticUpdate();
-  outputValues[0] = reinterpret_cast<double*>(&tdlambda.action)[0];
+  //outputValues[0] = reinterpret_cast<double*>(&tdlambda.action)[0]; // old cast version
+  outputValues[0] = double(tdlambda.action); // non-cast version
 }
 
 // make a copy of the brain that called this
@@ -68,9 +71,18 @@ std::shared_ptr<AbstractBrain> TDLambdaBrain::makeBrain(std::unordered_map<std::
 
   auto gh = _genomes["root::"]->newHandler(_genomes["root::"], true);
   int num_sites(tdlambda.params.n_features);
+  const double minval(-8.0), maxval(8.0);
+
+  /* Debugging with evolved genome, assumes alphabet size 1k */ 
+  //std::valarray<double> perfectWeights {-3.489, 0.0, 0.0, -2.836, -3.115, -1.825, 0.0, 0.0, 0.0, -3.36, 0.0, 0.0, -3.035, -2.541, -1.947, 0.0, 0.0, 0.0, -6.643, 0.0, 0.0, -2.024, -3.041, -1.407, 0.0, 0.0, 0.0, -7.181, 0.0, 0.0, -4.884, -3.197, -0.414, 0.0, 0.0, 0.0};
+  //for (int i=0; i<num_sites; i++) {
+  //  gh->writeDouble(perfectWeights[i],minval,maxval);
+  //  newBrain->tdlambda.weights[i] = perfectWeights[i];
+  //}
+
   for (int i=0; i<num_sites; i++) {
-    newBrain->tdlambda.weights[i] = gh->readDouble(-2.0,2.0);
-    gh->advanceIndex();
+    newBrain->tdlambda.weights[i] = gh->readDouble(minval,maxval);
+    //newBrain->tdlambda.weights[i] *= gh->readDouble(minval,maxval);
   }
   std::copy( begin(newBrain->tdlambda.weights), end(newBrain->tdlambda.weights), begin(newBrain->tdlambda.originalWeights) );
   return(newBrain);
@@ -160,6 +172,7 @@ void TDLambdaBrain::resetBrain() {
     resetInputs();
     resetOutputs();
     tdlambda.reset();
+    inputValues[0] = -1.0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

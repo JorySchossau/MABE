@@ -17,6 +17,7 @@
 #include <World/ConveyorBeltWorld/ConveyorBeltWorld.h>
 #include <World/ConveyorBeltWorld/ConveyorBeltWorld.h>
 #include <Utilities/Utilities.h>
+#include <math.h> // round, trunc
 //#include <Brain/TDLambdaBrain/TDUtils.h>
 
 std::shared_ptr<ParameterLink<int>> ConveyorBeltWorld::modePL = Parameters::register_parameter( "WORLD_CONVEYORBELT-mode", 0, "0 = bit outputs before adding, 1 = add outputs");
@@ -28,6 +29,9 @@ std::shared_ptr<ParameterLink<std::string>> ConveyorBeltWorld::brainNamePL = Par
 std::shared_ptr<ParameterLink<std::string>> ConveyorBeltWorld::dimensionsPL = Parameters::register_parameter( "WORLD_CONVEYORBELT-dimensions", (std::string) "3,3,4", "csv list of maximum dimensions of freedom for this world (salient inputs, and their ranges) for example, \"3,3,4\" for a 3x3 grid where agent knows x,y location and can have 4 actions or \"2,3\" for a world that presents binary inputs (2) and allows 3 actions.");
 std::shared_ptr<ParameterLink<std::string>> ConveyorBeltWorld::goalRewardsPL = Parameters::register_parameter( "WORLD_CONVEYORBELT-goalRewards", (std::string) "0", "csv list of rewarding values (typically 0, but may include positive values)");
 std::shared_ptr<ParameterLink<bool>> ConveyorBeltWorld::randomizePL = Parameters::register_parameter( "WORLD_CONVEYORBELT-randomize", true, "controls order of items on the belt.");
+std::shared_ptr<ParameterLink<bool>> ConveyorBeltWorld::logActionsPL = Parameters::register_parameter( "WORLD_CONVEYORBELT-logActions", false, "controls logging of actions taken during lifetime.");
+std::shared_ptr<ParameterLink<bool>> ConveyorBeltWorld::logRewardsPL = Parameters::register_parameter( "WORLD_CONVEYORBELT-logRewards", false, "controls logging of rewards received during lifetime.");
+std::shared_ptr<ParameterLink<bool>> ConveyorBeltWorld::logSensorsPL = Parameters::register_parameter( "WORLD_CONVEYORBELT-logSensors", false, "controls logging of sensor states during lifetime.");
 
 std::valarray<int> ConveyorBeltWorld::dimensions;
 ConveyorBelt::ConveyorBeltParams* ConveyorBeltWorld::pParameters = nullptr;
@@ -69,17 +73,7 @@ std::vector<Puzzle> ConveyorBeltWorld::puzzles {
       {3,3,3,3}} }
   ,
   {.features={{0,1},{0,1},{1,1},{0,0}},
-   .rewards={-1,-1,-1,0},
-   .solvable=true,
-   .startState=0,
-   .transitions=
-     {{0,0,2,3},
-      {0,0,0,0},
-      {2,0,2,3},
-      {3,3,3,3}} }
-  ,
-  {.features={{0,2},{0,2},{1,2},{0,0}},
-   .rewards={-1,-1,-1,-10},
+   .rewards={-1,-1,-1,-3},
    .solvable=false,
    .startState=0,
    .transitions=
@@ -127,6 +121,10 @@ ConveyorBeltWorld::ConveyorBeltWorld(std::shared_ptr<ParametersTable> PT_)
 
   ConveyorBeltWorld::num_trials = trialsPL->get();
   ConveyorBeltWorld::trial_length = trialLengthPL->get();
+  
+  logActions = logActionsPL->get();
+  logRewards = logRewardsPL->get();
+  logSensors = logSensorsPL->get();
 
   // columns to be added to ave file
   popFileColumns.clear();
@@ -134,6 +132,7 @@ ConveyorBeltWorld::ConveyorBeltWorld(std::shared_ptr<ParametersTable> PT_)
   popFileColumns.push_back("score_VAR"); // specifies to also record the
                                          // variance (performed automatically
                                          // because _VAR)
+  popFileColumns.push_back("eaten");
 }
 
 auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int debug) -> void {
@@ -183,29 +182,50 @@ auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int d
     world.reset(); // clean up after last agent used this memory space
     for (int trialn(0); trialn<ConveyorBeltWorld::num_trials; trialn++) {
       brain.resetBrain();
-      nextState = world.env.reset(); // segfault
+      brain.setInput(0, -1.0); // initial reward
+      nextState = world.env.reset();
       time = 0;
       while (true) {
         ++time;
         // set input(s)
-        for (i=1; i<brain.nrInputValues; ++i) // also, i <= nextState.size()
-          brain.setInput(i, reinterpret_cast<double*>(&nextState[i])[0]); // TODO
+        for (i=1; i<brain.nrInputValues; ++i) { // also, i <= nextState.size()
+          //brain.setInput(i, reinterpret_cast<double*>(&nextState[i-1])[0]); // old cast version
+          brain.setInput(i, nextState[i-1]);  // non-cast version
+        }
         // allow brain to compute action
         brain.update();
         // build action from output(s)
         output = brain.readOutput(0);
-        action = reinterpret_cast<int*>(&output)[0];
+        //action = reinterpret_cast<int*>(&output)[0]; // old cast version
+        action = int(std::trunc(std::round(output))); // non-cast version
         // compute change in environment due to agent action
         tie(nextState, reward, goal_achieved) = world.env.step(action);
+        if (logActions)
+          world.actions += std::to_string(action);
+        if (logRewards)
+          world.rewards += " "+std::to_string(int(reward));
+        if (logSensors)
+          world.sensors += " "+std::to_string(nextState[0])+std::to_string(nextState[1]);
         // provide reward for previous action
         brain.setInput(0,reward);
+        if (reward == 0.0) ++world.eaten;
+        if (reward < -1.0) --world.eaten;
         if (goal_achieved or time == ConveyorBeltWorld::trial_length) break; // end episode
         //else if (reward <= -10) { // if dying and will reset...
-        //  // allow brain to process death before resetting
-        //  brain.setInput(/*nextState*/);
-        //  brain.update();
-        //  brain.reset();
-        //  nextState = world.env.reset();
+        //  for (auto& puzzle : world.env.puzzles)
+        //    puzzle.solved = false; // maximum penalty
+        //  time = ConveyorBeltWorld::trial_length; // maximum penalty
+        //  world.numsolved = 0; // maximum penalty
+        //  world.numsteps = ConveyorBeltWorld::trial_length; // maximum penalty
+        //  trialn = ConveyorBeltWorld::num_trials; // finish all trials
+        //  break;
+        //  //// allow brain to process death before resetting
+        //  //for (i=1; i<brain.nrInputValues; ++i) // also, i <= nextState.size()
+        //  //  brain.setInput(i, reinterpret_cast<double*>(&nextState[i])[0]); // TODO
+        //  //brain.update();
+        //  //// now reset the world
+        //  //brain.reset();
+        //  //nextState = world.env.reset();
         //}
       }
       for (auto& puzzle : world.env.puzzles) {
@@ -217,8 +237,8 @@ auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int d
 
     int stepsTaken = world.numsteps.sum();
     int maxStepsPossible = ConveyorBeltWorld::trial_length * ConveyorBeltWorld::num_trials;
-    int score = maxStepsPossible - stepsTaken;
-    double scaled_score =  double(score) / double(maxStepsPossible);
+    int steps_score = maxStepsPossible - stepsTaken;
+    double scaled_score =  double(steps_score) / double(maxStepsPossible) + 1.0;
 
     int numsolved_all_trials = world.numsolved.sum();
     // count how many were maximally solvable in a single trial
@@ -227,10 +247,31 @@ auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int d
       if (puzzle.solvable) ++numsolvable_one_trial;
     // then calculate maximum possible accumulated solved score given num_trials
     int numsolvable_all_trials = numsolvable_one_trial * ConveyorBeltWorld::num_trials ;
-    double scaled_solved_score = double(numsolved_all_trials) / double(numsolvable_all_trials);
+    double scaled_solved_score = double(numsolved_all_trials) / double(numsolvable_all_trials) + 1.0;
+
+    double score = scaled_solved_score * scaled_score;
 
     //org->dataMap.set("score", scaled_score);
-    org->dataMap.set("score", scaled_solved_score);
+    //org->dataMap.set("score", scaled_solved_score);
+    //org->dataMap.set("score", scaled_score * scaled_solved_score);
+    //org->dataMap.set("score", score);
+    //org->dataMap.set("score", score - (world.actions.size() * 0.20));
+    //org->dataMap.set("score", numsolved_all_trials);
+    org->dataMap.set("score", world.eaten);
+    org->dataMap.set("eaten", world.eaten);
+
+    if (logActions) {
+      org->dataMap.set("actions", world.actions);
+      org->dataMap.setOutputBehavior("actions",DataMap::FIRST);
+    }
+    if (logRewards) {
+      org->dataMap.set("rewards", world.rewards);
+      org->dataMap.setOutputBehavior("rewards",DataMap::FIRST);
+    }
+    if (logSensors) {
+      org->dataMap.set("sensors", world.sensors);
+      org->dataMap.setOutputBehavior("sensors",DataMap::FIRST);
+    }
   }
 }
 
@@ -243,6 +284,21 @@ void ConveyorBeltWorld::evaluate(std::map<std::string, std::shared_ptr<Group>> &
   // such as position, state, reward, etc.
   // The visualize and debug flags are up for you to decide
   // what they mean, and you can set in settings.
+
+  //if (Global::update == 3000) {
+  //  ConveyorBeltWorld::puzzles.pop_back();
+  //  ConveyorBeltWorld::puzzles.push_back( 
+  //    {.features={{0,2},{0,2},{1,2},{0,0}},
+  //     .rewards={-1,-1,-1,0},
+  //     .solvable=true,
+  //     .startState=0,
+  //     .transitions=
+  //       {{0,0,2,3},
+  //        {0,0,0,0},
+  //        {2,0,2,3},
+  //        {3,3,3,3}} }
+  //      );
+  //}
 
   int popSize = groups[groupNamePL->get(PT)]->population.size();
   // save population to World-wide pointer so all threads have access to it
@@ -282,6 +338,4 @@ ConveyorBeltWorld::requiredGroups() {
   // genome,
   // the brain must have 1 input, and the variable numberOfOutputs outputs
 }
-
-
 

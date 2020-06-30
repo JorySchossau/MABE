@@ -13,9 +13,10 @@
 #include <World/AbstractWorld.h>
 #include <World/ConveyorBeltWorld/ConveyorBelt.h>
 
-#include <cstdlib>
 #include <thread>
+#include <cstddef>
 #include <vector>
+#include <array>
 #include <valarray>
 #include <queue>
 #include <algorithm>
@@ -27,6 +28,9 @@ public:
   static std::shared_ptr<ParameterLink<int>> numThreadsPL;
   static std::shared_ptr<ParameterLink<int>> trialsPL;
   static std::shared_ptr<ParameterLink<int>> trialLengthPL;
+  static std::shared_ptr<ParameterLink<bool>> logActionsPL;
+  static std::shared_ptr<ParameterLink<bool>> logRewardsPL;
+  static std::shared_ptr<ParameterLink<bool>> logSensorsPL;
 
   // int mode;
   // int numberOfOutputs;
@@ -66,21 +70,43 @@ public:
       ConveyorBelt env;
       std::valarray<int> numsteps;
       std::valarray<int> numsolved;
+      std::string actions;
+      std::string rewards;
+      std::string sensors;
+      int eaten;
       Experience();
       Experience(const ConveyorBelt::ConveyorBeltParams& params) : env(params) {
       };
       void reset() {
         numsteps = 0;
         numsolved = 0;
+        actions.clear();
+        rewards.clear();
+        sensors.clear();
+        eaten = 0;
       }
   };
   std::vector<Experience> experiences;
+
+  bool
+    logActions,
+    logRewards,
+    logSensors;
 
   // capitalize strings
   auto capitalize(const std::string& str) -> std::string {
     std::string result = str;
     std::transform(std::begin(str), std::end(str), std::begin(result), ::toupper);
     return result;
+  }
+
+  template <class Iterable, typename T = typename Iterable::value_type>
+  auto contains(const Iterable& iterable, const T& value) -> decltype(std::begin(iterable), std::end(iterable), bool{} ) {
+    for (auto& element : iterable) {
+      if (value == element)
+        return true;
+    }
+    return false;
   }
 };
 

@@ -66,6 +66,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY CMAKE_SKIP_INSTALL_ALL_DEPENDENCY ON)
 set_property(GLOBAL PROPERTY CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
 set_property(GLOBAL PROPERTY CMAKE_STARTUP_PROJECT mabe)
+set(CMAKE_EXE_LINKER_FLAGS " -static")
+target_link_libraries(${EXE} -static-libgcc -static-libstdc++)
 
 ## Useful directory-crawling macro
 ## example:

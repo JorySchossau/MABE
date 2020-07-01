@@ -62,7 +62,27 @@ auto operator<<( std::ostream& os, const std::vector<T, A>& arr ) -> std::ostrea
 }
 
 std::vector<Puzzle> ConveyorBeltWorld::puzzles {
+  {.features={{0,1},{0,1},{2,2},{0,0}},
+   .rewards={-1,-1,-1,-10},
+   .solvable=false,
+   .startState=0,
+   .transitions=
+     {{0,0,2,3},
+      {0,0,0,0},
+      {2,0,2,3},
+      {3,3,3,3}} }
+  ,
   {.features={{0,1},{0,1},{2,1},{0,0}},
+   .rewards={-1,-1,-1,0},
+   .solvable=true,
+   .startState=0,
+   .transitions=
+     {{0,0,2,3},
+      {0,0,0,0},
+      {2,0,2,3},
+      {3,3,3,3}} }
+  ,
+  {.features={{0,1},{0,1},{1,2},{0,0}},
    .rewards={-1,-1,-1,0},
    .solvable=true,
    .startState=0,
@@ -82,9 +102,39 @@ std::vector<Puzzle> ConveyorBeltWorld::puzzles {
       {2,0,2,3},
       {3,3,3,3}} }
   ,
+  {.features={{0,1},{0,1},{1,0},{0,0}},
+   .rewards={-1,-1,-1,-3},
+   .solvable=false,
+   .startState=0,
+   .transitions=
+     {{0,0,2,3},
+      {0,0,0,0},
+      {2,0,2,3},
+      {3,3,3,3}} }
+  ,
   {.features={{0,1},{0,1},{2,1},{0,0}},
    .rewards={-1,-1,-1,0},
    .solvable=true,
+   .startState=0,
+   .transitions=
+     {{0,0,2,3},
+      {0,0,0,0},
+      {2,0,2,3},
+      {3,3,3,3}} }
+  ,
+  {.features={{0,1},{0,1},{1,0},{0,0}},
+   .rewards={-1,-1,-1,-3},
+   .solvable=false,
+   .startState=0,
+   .transitions=
+     {{0,0,2,3},
+      {0,0,0,0},
+      {2,0,2,3},
+      {3,3,3,3}} }
+  ,
+  {.features={{0,1},{0,1},{1,1},{0,0}},
+   .rewards={-1,-1,-1,-3},
+   .solvable=false,
    .startState=0,
    .transitions=
      {{0,0,2,3},
@@ -133,6 +183,7 @@ ConveyorBeltWorld::ConveyorBeltWorld(std::shared_ptr<ParametersTable> PT_)
                                          // variance (performed automatically
                                          // because _VAR)
   popFileColumns.push_back("eaten");
+  popFileColumns.push_back("time_elapsed");
 }
 
 auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int debug) -> void {
@@ -211,22 +262,23 @@ auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int d
         if (reward == 0.0) ++world.eaten;
         if (reward < -1.0) --world.eaten;
         if (goal_achieved or time == ConveyorBeltWorld::trial_length) break; // end episode
-        //else if (reward <= -10) { // if dying and will reset...
-        //  for (auto& puzzle : world.env.puzzles)
-        //    puzzle.solved = false; // maximum penalty
-        //  time = ConveyorBeltWorld::trial_length; // maximum penalty
-        //  world.numsolved = 0; // maximum penalty
-        //  world.numsteps = ConveyorBeltWorld::trial_length; // maximum penalty
-        //  trialn = ConveyorBeltWorld::num_trials; // finish all trials
-        //  break;
-        //  //// allow brain to process death before resetting
-        //  //for (i=1; i<brain.nrInputValues; ++i) // also, i <= nextState.size()
-        //  //  brain.setInput(i, reinterpret_cast<double*>(&nextState[i])[0]); // TODO
-        //  //brain.update();
-        //  //// now reset the world
-        //  //brain.reset();
-        //  //nextState = world.env.reset();
-        //}
+        else if (reward <= -10) { // if dying and will reset...
+          for (auto& puzzle : world.env.puzzles)
+            puzzle.solved = false; // maximum penalty
+          time = ConveyorBeltWorld::trial_length; // maximum penalty
+          world.eaten = 0;
+          world.numsolved = 0; // maximum penalty
+          world.numsteps = ConveyorBeltWorld::trial_length; // maximum penalty
+          trialn = ConveyorBeltWorld::num_trials; // finish all trials
+          break;
+          //// allow brain to process death before resetting
+          //for (i=1; i<brain.nrInputValues; ++i) // also, i <= nextState.size()
+          //  brain.setInput(i, reinterpret_cast<double*>(&nextState[i])[0]); // TODO
+          //brain.update();
+          //// now reset the world
+          //brain.reset();
+          //nextState = world.env.reset();
+        }
       }
       for (auto& puzzle : world.env.puzzles) {
         if (puzzle.solved)
@@ -255,10 +307,11 @@ auto ConveyorBeltWorld::evaluate_single_thread(int analyze, int visualize, int d
     //org->dataMap.set("score", scaled_solved_score);
     //org->dataMap.set("score", scaled_score * scaled_solved_score);
     //org->dataMap.set("score", score);
-    //org->dataMap.set("score", score - (world.actions.size() * 0.20));
+    //org->dataMap.set("score", score - (world.numsteps.sum() * 0.002));
     //org->dataMap.set("score", numsolved_all_trials);
     org->dataMap.set("score", world.eaten);
     org->dataMap.set("eaten", world.eaten);
+    org->dataMap.set("time_elapsed", world.numsteps.sum());
 
     if (logActions) {
       org->dataMap.set("actions", world.actions);

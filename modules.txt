@@ -11,7 +11,7 @@
 
 % Archivist
   - SSwD
-  - LODwAP
+  * LODwAP
 
 % Brain
   - Wire
@@ -27,6 +27,6 @@
 % Optimizer
   - Islands
   - Lexicase
-  * Roulette
-  - Tournament
+  - Roulette
+  * Tournament
 
